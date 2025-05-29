@@ -132,12 +132,28 @@ if __name__ == '__main__':
 
         # -----------------------------test-------------------------------------
         if c.setting == 'oc':
+            import cv2
             for idx, i in enumerate(dataset):
                 print('testing on {} dataset (separate-class)'.format(dataset_name)) if idx == 0 else None
                 c._class_ = i
                 print(f"testing class:{i}")
-                auroc_sp, auroc_px, aupro_px = test(c, suffix='BEST_P_PRO')
+                auroc_sp, auroc_px, aupro_px, anomaly_map, input_images = test(c, suffix='BEST_P_PRO')
                 print('')
+                save_dir = os.path.join("results", c.dataset, c._class_)
+                os.makedirs(save_dir, exist_ok=True)
+                for i_hm in range(len(anomaly_map)):
+                    vis_map = anomaly_map[i_hm]
+                    vis_map = (vis_map - vis_map.min()) / (vis_map.max() - vis_map.min() + 1e-8)
+                    vis_map = (vis_map * 255).astype(np.uint8)
+                    vis_map = cv2.resize(vis_map, (256, 256))
+                    heatmap = cv2.applyColorMap(vis_map, cv2.COLORMAP_JET)
+
+                    orig = input_images[i_hm].cpu().numpy().transpose(1, 2, 0)
+                    orig = (orig * 255).astype(np.uint8)
+                    orig = cv2.resize(orig, (256, 256))
+                    overlay = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
+                    save_path = os.path.join(save_dir, f"overlay_main_{i_hm:03}.png")
+                    cv2.imwrite(save_path, overlay)
                 table_ls.append(['{}'.format(i), str(np.round(auroc_sp, decimals=1)),
                                  str(np.round(auroc_px, decimals=1)),
                                  str(np.round(aupro_px, decimals=1))])
@@ -299,24 +315,6 @@ if __name__ == '__main__':
             c._class_ = i
             c.dataset = i
             auroc_sp, acc, f1, anomaly_map, input_images = test(c, stu_type='su_cls', suffix="BEST_I_ROC")
-
-            # Save overlayed heatmaps
-            import cv2
-            save_dir = os.path.join("results", c.dataset, c._class_)
-            os.makedirs(save_dir, exist_ok=True)
-            for i_hm in range(len(anomaly_map)):
-                vis_map = anomaly_map[i_hm]
-                vis_map = (vis_map - vis_map.min()) / (vis_map.max() - vis_map.min() + 1e-8)
-                vis_map = (vis_map * 255).astype(np.uint8)
-                vis_map = cv2.resize(vis_map, (256, 256))
-                heatmap = cv2.applyColorMap(vis_map, cv2.COLORMAP_JET)
-
-                orig = input_images[i_hm].cpu().numpy().transpose(1, 2, 0)
-                orig = (orig * 255).astype(np.uint8)
-                orig = cv2.resize(orig, (256, 256))
-                overlay = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
-                save_path = os.path.join(save_dir, f"overlay_main_{i_hm:03}.png")
-                cv2.imwrite(save_path, overlay)
 
             table_ls.append(['mean', str(np.round(auroc_sp, decimals=1)),
                              str(np.round(acc, decimals=1)),
