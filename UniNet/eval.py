@@ -90,7 +90,8 @@ def evaluation_indusAD(c, model, dataloader, device):
             orig = cv2.resize(orig, (256, 256))
             overlay = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
             save_path = os.path.join(save_dir, f"overlay_main_{i_hm:03}.png")
-            cv2.imwrite(save_path, overlay)
+            concat_img = cv2.hconcat([overlay, orig])
+            cv2.imwrite(save_path, concat_img)
 
     return auroc_px, auroc_sp, pro
 
