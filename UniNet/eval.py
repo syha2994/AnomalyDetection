@@ -73,7 +73,8 @@ def evaluation_indusAD(c, model, dataloader, device):
             vis_map = anomaly_map[i]
             vis_map = (vis_map - vis_map.min()) / (vis_map.max() - vis_map.min() + 1e-8)
             vis_map = (vis_map * 255).astype(np.uint8)
-            vis_map_resized = cv2.resize(vis_map, gt_list_px[i].shape[::-1])  # Resize to match original
+            height, width = gt_list_px[i].shape[:2]
+            vis_map_resized = cv2.resize(vis_map, (width, height))  # Resize to match original
 
             # Apply colormap
             heatmap = cv2.applyColorMap(vis_map_resized, cv2.COLORMAP_JET)
