@@ -93,8 +93,12 @@ def evaluation_indusAD(c, model, dataloader, device):
             orig = cv2.resize(orig, (256, 256))
             orig = cv2.cvtColor(orig, cv2.COLOR_RGB2BGR)
             overlay = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
+            # Add ground truth mask image
+            gt_mask_img = gt_list_px[i_hm][0].astype(np.uint8) * 255
+            gt_mask_img = cv2.resize(gt_mask_img, (256, 256))
+            gt_mask_img = cv2.cvtColor(gt_mask_img, cv2.COLOR_GRAY2BGR)
             save_path = os.path.join(save_dir, f"overlay_main_{i_hm:03}.png")
-            concat_img = cv2.hconcat([overlay, orig])
+            concat_img = cv2.hconcat([overlay, orig, gt_mask_img])
             cv2.imwrite(save_path, concat_img)
 
     return auroc_px, auroc_sp, pro
