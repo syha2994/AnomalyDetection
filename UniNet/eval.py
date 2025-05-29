@@ -64,20 +64,31 @@ def evaluation_indusAD(c, model, dataloader, device):
 
         # anomaly_score_add = gaussian_filter(anomaly_score_add, sigma=4)
 
-        # --- Save anomaly map visualizations ---
-        import matplotlib.pyplot as plt
+        # --- Save overlayed heatmap visualizations ---
         import os
-        # Create output directory if it doesn't exist
         save_dir = os.path.join("results", c.dataset, c._class_)
         os.makedirs(save_dir, exist_ok=True)
-        # Normalize and save anomaly maps
+        # Normalize and overlay heatmap on original image
         for i in range(len(anomaly_map)):
             vis_map = anomaly_map[i]
             vis_map = (vis_map - vis_map.min()) / (vis_map.max() - vis_map.min() + 1e-8)
             vis_map = (vis_map * 255).astype(np.uint8)
-            save_path = os.path.join(save_dir, f"anomaly_map_{i:03}.png")
-            cv2.imwrite(save_path, vis_map)
-        # --- End visualization save ---
+            vis_map_resized = cv2.resize(vis_map, gt_list_px[i].shape[::-1])  # Resize to match original
+
+            # Apply colormap
+            heatmap = cv2.applyColorMap(vis_map_resized, cv2.COLORMAP_JET)
+
+            # Get original image
+            orig_img = sample[0].cpu().numpy().transpose(1, 2, 0) * 255
+            orig_img = orig_img.astype(np.uint8)
+
+            if orig_img.shape[:2] != heatmap.shape[:2]:
+                orig_img = cv2.resize(orig_img, (heatmap.shape[1], heatmap.shape[0]))
+
+            overlayed = cv2.addWeighted(orig_img, 0.6, heatmap, 0.4, 0)
+            save_path = os.path.join(save_dir, f"overlayed_{i:03}.png")
+            cv2.imwrite(save_path, overlayed)
+        # --- End overlayed visualization save ---
 
         gt_label = np.asarray(gt_list_sp, dtype=np.bool_)
         gt_mask = np.squeeze(np.asarray(gt_list_px, dtype=np.bool_), axis=1)
