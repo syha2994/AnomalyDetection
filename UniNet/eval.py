@@ -64,6 +64,21 @@ def evaluation_indusAD(c, model, dataloader, device):
 
         # anomaly_score_add = gaussian_filter(anomaly_score_add, sigma=4)
 
+        # --- Save anomaly map visualizations ---
+        import matplotlib.pyplot as plt
+        import os
+        # Create output directory if it doesn't exist
+        save_dir = os.path.join("results", c.dataset, c._class_)
+        os.makedirs(save_dir, exist_ok=True)
+        # Normalize and save anomaly maps
+        for i in range(len(anomaly_map)):
+            vis_map = anomaly_map[i]
+            vis_map = (vis_map - vis_map.min()) / (vis_map.max() - vis_map.min() + 1e-8)
+            vis_map = (vis_map * 255).astype(np.uint8)
+            save_path = os.path.join(save_dir, f"anomaly_map_{i:03}.png")
+            cv2.imwrite(save_path, vis_map)
+        # --- End visualization save ---
+
         gt_label = np.asarray(gt_list_sp, dtype=np.bool_)
         gt_mask = np.squeeze(np.asarray(gt_list_px, dtype=np.bool_), axis=1)
 
