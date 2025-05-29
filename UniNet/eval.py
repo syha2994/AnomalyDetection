@@ -72,6 +72,25 @@ def evaluation_indusAD(c, model, dataloader, device):
 
         pro = round(eval_seg_pro(gt_mask, anomaly_map), 1)
 
+        # Overlay and save heatmap images using cv2
+        import cv2
+        save_dir = os.path.join("results", c.dataset, c._class_)
+        os.makedirs(save_dir, exist_ok=True)
+
+        for i_hm in range(len(anomaly_map)):
+            vis_map = anomaly_map[i_hm]
+            vis_map = (vis_map - vis_map.min()) / (vis_map.max() - vis_map.min() + 1e-8)
+            vis_map = (vis_map * 255).astype(np.uint8)
+            vis_map = cv2.resize(vis_map, (256, 256))
+            heatmap = cv2.applyColorMap(vis_map, cv2.COLORMAP_JET)
+
+            orig = dataloader.dataset[i_hm][0].numpy().transpose(1, 2, 0)
+            orig = (orig * 255).astype(np.uint8)
+            orig = cv2.resize(orig, (256, 256))
+            overlay = cv2.addWeighted(orig, 0.6, heatmap, 0.4, 0)
+            save_path = os.path.join(save_dir, f"overlay_main_{i_hm:03}.png")
+            cv2.imwrite(save_path, overlay)
+
     return auroc_px, auroc_sp, pro
 
 
