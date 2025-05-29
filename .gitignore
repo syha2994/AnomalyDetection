@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# PyCharm
+.idea/
+
+# VSCode
+.vscode/
+
+# macOS system files
+.DS_Store
+
+# Logs
+*.log
+
+# Data files
+*.csv
+*.tsv
+*.xlsx
+*.xls
+*.h5
+*.npy
+*.npz
+*.pth
+*.ckpt
+
+# Model checkpoints & results
+checkpoints/
+runs/
+saved_models/
+saved_results/
+
+# Cache
+.cache/
+__pycache__/
+*.cache
+
+# TensorBoard
+events.out.tfevents.*
+
+# Uploaded files (if any)
+*.zip
+*.tar.gz
+*.rar
+
+# Compiled Cython/PyTorch extensions
+*.so
+
+# Others
+*.swp
