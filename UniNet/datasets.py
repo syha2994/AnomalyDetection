@@ -169,7 +169,7 @@ def loading_dataset(c, dataset_name):
 
 class MVTecDataset(torch.utils.data.Dataset):
     def __init__(self, c, is_train=True, dataset='mvtec'):
-        self.dataset_path = '../data/' + dataset
+        self.dataset_path = './data/' + dataset
         self.class_name = c._class_
         self.is_train = is_train
         # self.is_vis = c.is_vis

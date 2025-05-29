@@ -74,7 +74,8 @@ def evaluation_indusAD(c, model, dataloader, device):
 
         # Overlay and save heatmap images using cv2
         import cv2
-        save_dir = os.path.join("results", c.dataset, c._class_)
+        save_dir = os.path.join("/home/spiderman/working/PycharmProjects/AnomalyDetection/UniNet/results", c.dataset, c._class_)
+        print(save_dir)
         os.makedirs(save_dir, exist_ok=True)
 
         for i_hm in range(len(anomaly_map)):
