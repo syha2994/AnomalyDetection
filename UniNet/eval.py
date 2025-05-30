@@ -59,6 +59,11 @@ def evaluation_indusAD(c, model, dataloader, device):
 
         # postprocess
         anomaly_score, anomaly_map = weighted_decision_mechanism(weights_cnt, output_list, c.alpha, c.beta)
+        # Normalize anomaly_map globally for consistent heatmap visualization
+        global_min = anomaly_map.min()
+        global_max = anomaly_map.max()
+        anomaly_map = (anomaly_map - global_min) / (global_max - global_min + 1e-8)
+        anomaly_map = np.clip(anomaly_map, 0, 1)
         # anomaly_score = gaussian_filter(anomaly_score, sigma=4) if is_similarity else \
         #     [np.max(gaussian_filter(anomaly_score, sigma=4)[i, :, :, :].numpy()) for i in range(anomaly_score.shape[0])]
 
