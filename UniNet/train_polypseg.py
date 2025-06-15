@@ -74,7 +74,7 @@ def train_polyp(c):
                     # lr_scheduler.step()
         print('epoch [{}/{}], loss:{:.4f}'.format(epoch+1, c.epochs, np.mean(loss_list)))
         if (epoch + 1) % 10 == 0:
-            modules_list = [model.t.t_t, model.bn.bn, model.s.s1, DFS]
+            modules_list = [model.t.target_teacher, model.bn.bottleneck, model.s.student_decoder, DFS]
 
             dice, iou = evaluation_polypseg(c, model, test_dataloader, num1, c.image_size)
             best_dice = dice if best_dice < dice else best_dice

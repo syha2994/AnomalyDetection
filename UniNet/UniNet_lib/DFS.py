@@ -46,24 +46,24 @@ class DomainRelated_Feature_Selection(nn.Module):
         return features
 
 
-def domain_related_feature_selection(xs, priors, max=True):
+def domain_related_feature_selection(student_features, teacher_features, use_max_normalization=True):
     features_list = []
     theta = 1
-    for (x, prior) in zip(xs, priors):
-        b, c, h, w = x.shape
+    for (student_feature, teacher_feature) in zip(student_features, teacher_features):
+        b, c, h, w = student_feature.shape
 
-        prior_flat = prior.view(b, c, -1)
-        if max:
-            prior_flat_ = prior_flat.max(dim=-1, keepdim=True)[0]
-            prior_flat = prior_flat - prior_flat_
-        weights = F.softmax(prior_flat, dim=-1)
+        teacher_flat = teacher_feature.view(b, c, -1)
+        if use_max_normalization:
+            prior_flat_ = teacher_flat.max(dim=-1, keepdim=True)[0]
+            teacher_flat = teacher_flat - prior_flat_
+        weights = F.softmax(teacher_flat, dim=-1)
         weights = weights.view(b, c, h, w)
 
-        global_inf = prior.mean(dim=(-2, -1), keepdim=True)
+        global_inf = teacher_feature.mean(dim=(-2, -1), keepdim=True)
 
         inter_weights = weights * (theta + global_inf)
 
-        x_ = x * inter_weights
-        features_list.append(x_)
+        weighted_student_feature = student_feature * inter_weights
+        features_list.append(weighted_student_feature)
 
     return features_list

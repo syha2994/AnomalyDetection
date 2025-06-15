@@ -1,71 +1,74 @@
-import copy
-import time
-
+import os
+import copy  # 모델 구조를 그대로 복사할 때 사용
 import torch
 import numpy as np
-import os
-
+from eval import evaluation_indusAD, evaluation_mediAD, evaluation_video
+from utils import save_weights, to_device
+from datasets import loading_dataset
+from UniNet_lib.DFS import DomainRelated_Feature_Selection
+from UniNet_lib.model import UniNet, EarlyStopping
 from UniNet_lib.resnet import wide_resnet50_2
 from UniNet_lib.de_resnet import de_wide_resnet50_2
-from datasets import loading_dataset
-import torch.backends.cudnn as cudnn
-from eval import evaluation_indusAD, evaluation_mediAD, evaluation_video
-from torch.nn import functional as F
-from utils import setup_seed, count_parameters, save_weights, to_device, get_logger
-from UniNet_lib.model import UniNet, EarlyStopping
-from UniNet_lib.DFS import DomainRelated_Feature_Selection
 
 
-def train(c):
+def train(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(device)
 
-    dataset_name = c.dataset
-    if c._class_ in [dataset_name]:
+    dataset_name = args.dataset
+    if args._class_ in [dataset_name]:
         ckpt_path = os.path.join("./ckpts", dataset_name)
     else:
-        ckpt_path = os.path.join("./ckpts", dataset_name, f"{c._class_}")
+        ckpt_path = os.path.join("./ckpts", dataset_name, f"{args._class_}")
 
     # ---------------------------------loading dataset-----------------------------------------------
-    train_dataloader, test_dataloader = loading_dataset(c, dataset_name)
+    train_dataloader, test_dataloader = loading_dataset(args, dataset_name)
 
     # ---------------------------------loading model-------------------------------------------------
-    Source_teacher, bn = wide_resnet50_2(c, pretrained=True)
-    Source_teacher.layer4 = None
-    Source_teacher.fc = None
+    source_teacher, bottleneck = wide_resnet50_2(args, pretrained=True)
+    source_teacher.layer4 = None
+    source_teacher.fc = None
+
+    target_teacher = copy.deepcopy(source_teacher)  # contrastive learning
+
     student = de_wide_resnet50_2(pretrained=False)
     DFS = DomainRelated_Feature_Selection()
-    [Source_teacher, bn, student, DFS] = to_device([Source_teacher, bn, student, DFS], device)
-    Target_teacher = copy.deepcopy(Source_teacher)
+    [source_teacher, bottleneck, student, DFS] = to_device([source_teacher, bottleneck, student, DFS], device)
 
-    params = list(student.parameters()) + list(bn.parameters()) + list(DFS.parameters())
-    optimizer = torch.optim.AdamW(params, lr=c.lr_s, betas=(0.9, 0.999),
-                                  weight_decay=1e-5)
-    optimizer1 = torch.optim.AdamW(list(Target_teacher.parameters()), lr=1e-4 if c._class_ == 'transistor' else c.lr_t,
-                                   betas=(0.9, 0.999), weight_decay=1e-5)
-    model = UniNet(c, Source_teacher, Target_teacher, bn, student, DFS=DFS)
+    params = list(student.parameters()) + list(bottleneck.parameters()) + list(DFS.parameters())
+    student_optimizer = torch.optim.AdamW(
+        params, lr=args.lr_s, betas=(0.9, 0.999), weight_decay=1e-5)
+    target_teacher_optimizer = torch.optim.AdamW(
+        list(target_teacher.parameters()),
+        lr=1e-4 if args._class_ == 'transistor' else args.lr_t,
+        betas=(0.9, 0.999), weight_decay=1e-5)
+
+    model = UniNet(args, source_teacher, target_teacher, bottleneck, student, DFS=DFS)
 
     # total_params = count_parameters(model)
     # print("Number of parameter: %.2fM" % (total_params/1e6))
 
-    auroc_sp, auroc_px, aupro_px, max_IRoc, max_PRoc, max_PPro = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
-    total_iters = 2000 if dataset_name == "ISIC2018" else 1000
+    best_sample_level_auroc, best_pixel_level_auroc, best_pixel_level_aupro = 0.0, 0.0, 0.0
+
+    total_iters = 1000
+    if dataset_name == "ISIC2018":
+        total_iters = 2000
     it = 0
     early_stopping = EarlyStopping(patience=3, verbose=False)
 
     # ---------------------------------------------training-----------------------------------------------
-    for epoch in range(c.epochs):
+    for epoch in range(args.epochs):
         model.train_or_eval(type='train')
         loss_list = []
-        for sample in train_dataloader:
+        for sample in train_dataloader:  # 배치 단위
             img = sample[0][0].to(device) if dataset_name == "MVTec 3D-AD" else sample[0].to(device)
             loss = model(img, stop_gradient=dataset_name in ["APTOS", "ISIC2018", "OCT2017"])
-            optimizer.zero_grad()
-            optimizer1.zero_grad()
+            student_optimizer.zero_grad()
+            target_teacher_optimizer.zero_grad()
             loss.backward()
             # torch.nn.utils.clip_grad_norm_(params, 0.5)
-            optimizer.step()
-            optimizer1.step()
+            student_optimizer.step()
+            target_teacher_optimizer.step()
             loss_list.append(loss.item())
 
             # ------------------------------------eval medical AD-------------------------------------------
@@ -73,12 +76,12 @@ def train(c):
                 if (it + 1) % 250 == 0:
                     print('iters: {}/{}, loss:{:.4f}'.format(it + 1, total_iters, np.mean(loss_list)))
 
-                    modules_list = [model.t.t_t, model.bn.bn, model.s.s1, DFS]
-                    auroc, f1, acc = evaluation_mediAD(c, model, test_dataloader, device)
+                    modules_list = [model.teacher.target_teacher, model.bottleneck.bottleneck, model.student.student_decoder, DFS]
+                    auroc, f1, acc = evaluation_mediAD(args, model, test_dataloader, device)
                     print('Auroc: {:.2f}, f1: {:.2f}, acc: {:.2f}'.format(auroc, f1, acc))
-                    if max_IRoc < auroc:
-                        max_IRoc = auroc
-                        save_weights(modules_list, ckpt_path, "BEST_I_ROC") if c.is_saved else None
+                    if best_sample_level_auroc < auroc:
+                        best_sample_level_auroc = auroc
+                        save_weights(modules_list, ckpt_path, "BEST_I_ROC") if args.is_saved else None
                     model.train_or_eval(type='train')
                 it += 1
                 if it > total_iters:
@@ -87,35 +90,38 @@ def train(c):
         # ------------------------------------eval industrial and video-------------------------------------
 
         if dataset_name in ['MVTec AD', 'BTAD', 'MVTec 3D-AD', "VisA", 'ped2']:
-            print('epoch [{}/{}], loss:{:.4f}'.format(epoch + 1, c.epochs, np.mean(loss_list)))
+            print('epoch [{}/{}], loss:{:.4f}'.format(epoch + 1, args.epochs, np.mean(loss_list)))
 
-        modules_list = [model.t.t_t, model.bn.bn, model.s.s1, DFS]
-        best_iroc = False
-        if (epoch + 1) % 10 == 0 and c.domain in ['industrial', 'video']:
+        modules_list = [model.teacher.target_teacher, model.bottleneck.bottleneck, model.student.student_decoder, DFS]
+        is_best_sample_auroc = False
+        if (epoch + 1) % 10 == 0 and args.domain in ['industrial', 'video']:
 
             if dataset_name in ['MVTec AD', 'BTAD', 'MVTec 3D-AD', "VisA"]:
                 # evaluation
-                auroc_px, auroc_sp, aupro_px = evaluation_indusAD(c, model, test_dataloader, device)
-                print('Sample Auroc: {:.1f}, Pixel Auroc: {:.1f}, Pixel Aupro: {:.1f}'.format(auroc_sp, auroc_px,
-                                                                                              aupro_px))
-                if max_IRoc < auroc_sp:
-                    max_IRoc = auroc_sp
-                    # save_weights(modules_list, ckpt_path, "BEST_I_ROC") if c.is_saved else None
-                    best_iroc = True
-                if max_PRoc < auroc_px:
-                    max_PRoc = auroc_px
-                    save_weights(modules_list, ckpt_path, "BEST_P_ROC") if c.is_saved else None
-                if (best_iroc and max_PPro == aupro_px) or max_PPro < aupro_px:
-                    max_PPro = aupro_px
+                pixel_level_auroc, sample_level_auroc, pixel_level_aupro = evaluation_indusAD(args, model, test_dataloader, device)
+                print('Sample Auroc: {:.1f}, Pixel Auroc: {:.1f}, Pixel Aupro: {:.1f}'.format(sample_level_auroc, pixel_level_auroc,
+                                                                                              pixel_level_aupro))
+                if best_sample_level_auroc < sample_level_auroc:
+                    best_sample_level_auroc = sample_level_auroc
+                    is_best_sample_auroc = True
+
+                if best_pixel_level_auroc < pixel_level_auroc:
+                    best_pixel_level_auroc = pixel_level_auroc
+                    save_weights(modules_list, ckpt_path, "BEST_P_ROC") if args.is_saved else None
+
+                if (is_best_sample_auroc and best_pixel_level_aupro == pixel_level_aupro) or best_pixel_level_aupro < pixel_level_aupro:
+                    best_pixel_level_aupro = pixel_level_aupro
                     print('saved')
-                    save_weights(modules_list, ckpt_path, "BEST_P_PRO") if c.is_saved else None
-                print(f"MAX I_ROC: {max_IRoc:.1f}, MAX P_ROC: {max_PRoc:.1f}, MAX P_PRO: {max_PPro:.1f}")
-                early_stopping(aupro_px)
+                    save_weights(modules_list, ckpt_path, "BEST_P_PRO") if args.is_saved else None
+
+                print(f"MAX I_ROC: {best_sample_level_auroc:.1f}, MAX P_ROC: {best_pixel_level_auroc:.1f}, MAX P_PRO: {best_pixel_level_aupro:.1f}")
+                early_stopping(pixel_level_aupro)
+
                 if early_stopping.early_stop:
                     print("Early stopping")
                     break
 
             else:
                 test_folder = 'video/ped2/testing/frames'
-                auroc = evaluation_video(c, model, test_folder, test_dataloader, device)
+                auroc = evaluation_video(args, model, test_folder, test_dataloader, device)
                 print('Auroc: {:.2f}'.format(auroc))

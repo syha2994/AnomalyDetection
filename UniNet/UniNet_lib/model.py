@@ -31,129 +31,126 @@ class EarlyStopping:
             self.counter = 0
 
     def save_checkpoint(self, pro):
-        """保存当前最佳模型"""
         if self.verbose:
             print(f'PRO increases ({self.pro_min:.1f} --> {pro:.1f}). Saving model...')
         self.pro_min = pro
 
 
 class UniNet(nn.Module):
-    def __init__(self, c, Source_teacher, Target_teacher, bottleneck, student, DFS=None):
+    def __init__(self, c, source_teacher, target_teacher, bottleneck, student, DFS=None):
         super().__init__()
         self._class_ = c._class_
-        self.T = c.T
-        self.n = 1 if Target_teacher is None else 2
-        self.t = Teachers(Source_teacher=Source_teacher, Target_teacher=Target_teacher)
-        self.bn = BN(bottleneck)
-        self.s = Student(student=student)
+        self.T = c.T # 코사인 유사도 결과 조절 하는 스케일링 파라미터
+        self.n = 1 if target_teacher is None else 2
+        self.teacher = Teachers(source_teacher=source_teacher, target_teacher=target_teacher)
+        self.bottleneck = BottleNeck(bottleneck)
+        self.student = Student(student=student)
         self.dfs = DFS
 
     def train_or_eval(self, type='train'):
         self.type = type
-        self.t.train_eval(type)
-        self.bn.train_eval(type)
-        self.s.train_eval(type)
+        self.teacher.train_eval(type)
+        self.bottleneck.train_eval(type)
+        self.student.train_eval(type)
 
         return self
 
-    def feature_selection(self, b, a, max):
+    def feature_selection(self, teacher_features, student_features, max):
         if self._class_ in ['transistor']:
-            return a
+            return student_features
 
         if self.dfs is not None:
-            selected_features = self.dfs(a, b, learnable=True, conv=False, max=max)
+            selected_features = self.dfs(student_features, teacher_features, learnable=True, conv=False, max=max)
         else:
             from .DFS import domain_related_feature_selection
-            selected_features = domain_related_feature_selection(a, b, max=max)
+            selected_features = domain_related_feature_selection(student_features, teacher_features, use_max_normalization=max)
         return selected_features
 
-    def loss_computation(self, b, a, margin=1, mask=None, stop_gradient=False):
+    def loss_computation(self, teacher_feature, student_feature, margin=1, mask=None, stop_gradient=False):
         T = 0.1 if self._class_ in ['transistor', 'pill', 'cable', 'bottle', "grid", 'foam'] else self.T
-        loss = losses(b, a, T, margin, mask=mask, stop_gradient=stop_gradient)
+        loss = losses(teacher_feature, student_feature, T, margin, mask=mask, stop_gradient=stop_gradient)
 
         return loss
 
     def forward(self, x, max=True, mask=None, stop_gradient=False):
-        Sou_Tar_features, bnins = self.t(x)
-        bnsout = self.bn(bnins)
-        stu_features = self.s(bnsout)
+        source_target_features, bottleneck_inputs = self.teacher(x)
+        bottleneck_out = self.bottleneck(bottleneck_inputs)
+        student_features = self.student(bottleneck_out)
 
-        stu_features = [d.chunk(dim=0, chunks=2) for d in stu_features]
-        stu_features = [stu_features[0][0], stu_features[1][0], stu_features[2][0],
-                        stu_features[0][1], stu_features[1][1], stu_features[2][1]]
+        student_features = [d.chunk(dim=0, chunks=2) for d in student_features]
+        student_features = [student_features[0][0], student_features[1][0], student_features[2][0],
+                            student_features[0][1], student_features[1][1], student_features[2][1]]
 
         if self.type == 'train':
-            stu_features_ = self.feature_selection(Sou_Tar_features, stu_features, max)
-            loss = self.loss_computation(Sou_Tar_features, stu_features_, mask=mask, stop_gradient=stop_gradient)
+            student_features_ = self.feature_selection(source_target_features, student_features, max)
+            loss = self.loss_computation(source_target_features, student_features_, mask=mask, stop_gradient=stop_gradient)
 
             return loss
         else:
-            return Sou_Tar_features, stu_features
+            return source_target_features, student_features
 
 
 class Teachers(nn.Module):
-    def __init__(self, Source_teacher, Target_teacher):
+    def __init__(self, source_teacher, target_teacher):
         super().__init__()
-        self.t_s = Source_teacher
-        self.t_t = Target_teacher
+        self.source_teacher = source_teacher
+        self.target_teacher = target_teacher
 
     def train_eval(self, type='train'):
         self.type = type
-        self.t_s.eval()
-        if self.t_t is not None:
+        self.source_teacher.eval()
+        if self.target_teacher is not None:
             if type == "train":
-                self.t_t.train()
+                self.target_teacher.train()
             else:
-                self.t_t.eval()
+                self.target_teacher.eval()
 
         return self
 
     def forward(self, x):
         with torch.no_grad():
-            Sou_features = self.t_s(x)
+            source_teacher_feature = self.source_teacher(x)
 
-        if self.t_t is None:
-            return Sou_features
+        if self.target_teacher is None:
+            return source_teacher_feature
         else:
-            Tar_features = self.t_t(x)
-            bnins = [torch.cat([a, b], dim=0) for a, b in zip(Tar_features, Sou_features)]  # 512, 1024, 2048
+            target_teacher_feature = self.target_teacher(x)
+            bottleneck_input = [torch.cat([a, b], dim=0) for a, b in zip(target_teacher_feature, source_teacher_feature)]  # 512, 1024, 2048
 
-            return Sou_features + Tar_features, bnins
+            return source_teacher_feature + target_teacher_feature, bottleneck_input
 
 
-class BN(nn.Module):
+class BottleNeck(nn.Module):
     def __init__(self, bottleneck):
         super().__init__()
-        self.bn = bottleneck
+        self.bottleneck = bottleneck
 
     def train_eval(self, type='train'):
         if type == 'train':
-            self.bn.train()
+            self.bottleneck.train()
         else:
-            self.bn.eval()
+            self.bottleneck.eval()
 
         return self
 
     def forward(self, x):
-        bns = self.bn(x)
-
-        return bns
+        bottleneck_output = self.bottleneck(x)
+        return bottleneck_output
 
 
 class Student(nn.Module):
     def __init__(self, student):
         super().__init__()
-        self.s1 = student
+        self.student_decoder = student
 
     def train_eval(self, type='train'):
         if type == 'train':
-            self.s1.train()
+            self.student_decoder.train()
         else:
-            self.s1.eval()
+            self.student_decoder.eval()
 
         return self
 
-    def forward(self, bn_outs, skips=None):
-        de_features = self.s1(bn_outs)
-
-        return de_features
+    def forward(self, bottleneck_out, skips=None):
+        student_decoded_features = self.student_decoder(bottleneck_out)
+        return student_decoded_features

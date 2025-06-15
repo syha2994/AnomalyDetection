@@ -64,7 +64,7 @@ def train(c):
                 if (it + 1) % (75 * 3) == 0:
                     auroc_sp, f1, acc = evaluation_vad(c, model, test_dataloader, device)
                     print('Sample Auroc: {:.2f}, f1: {:.2f}, acc: {:.2f}'.format(auroc_sp, f1, acc))
-                    modules_list = [model.t.t_t, model.bn.bn, model.s.s1, DFS]
+                    modules_list = [model.t.target_teacher, model.bn.bottleneck, model.s.student_decoder, DFS]
                     if b_auroc < auroc_sp:
                         b_auroc = auroc_sp
                         save_weights(modules_list, ckpt_path, "BEST_I_ROC")

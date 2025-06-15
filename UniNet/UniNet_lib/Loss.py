@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 
-def losses(b, a, T, margin, λ=0.7, mask=None, stop_gradient=False):
+def losses(teacher_feature, student_feature, T, margin, λ=0.7, mask=None, stop_gradient=False):
     """
     b: List of teacher features
     a: List of student features
@@ -15,37 +15,41 @@ def losses(b, a, T, margin, λ=0.7, mask=None, stop_gradient=False):
     loss = 0.0
     margin_loss_n = 0.0
     margin_loss_a = 0.0
-    contra_loss = 0.0
-    for i in range(len(a)):
-        s_ = a[i]
-        t_ = b[i].detach() if stop_gradient else b[i]
+    contrastive_loss = 0.0
 
-        n, c, h, w = s_.shape
+    for i in range(len(student_feature)):
+        student_feat_map = student_feature[i]
+        teacher_feat_map = teacher_feature[i].detach() if stop_gradient else teacher_feature[i]
 
-        s = s_.view(n, c, -1).transpose(1, 2)  # (N, H*W, C)
-        t = t_.view(n, c, -1).transpose(1, 2)  # (N, H*W, C)
+        n, c, h, w = student_feat_map.shape
 
-        s_norm = F.normalize(s, p=2, dim=2)
-        t_norm = F.normalize(t, p=2, dim=2)
+        student_flattened = student_feat_map.view(n, c, -1).transpose(1, 2)  # (N, H*W, C)
+        teacher_flattened = teacher_feat_map.view(n, c, -1).transpose(1, 2)  # (N, H*W, C)
 
-        cos_loss = 1 - F.cosine_similarity(s_norm, t_norm, dim=2)
+        student_normed = F.normalize(student_flattened, p=2, dim=2)
+        teacher_normed = F.normalize(teacher_flattened, p=2, dim=2)
+
+        cos_loss = 1 - F.cosine_similarity(student_normed, teacher_normed, dim=2)
         cos_loss = cos_loss.mean()
 
-        simi = torch.matmul(s_norm, t_norm.transpose(1, 2)) / T
-        simi = torch.exp(simi)
-        simi_sum = simi.sum(dim=2, keepdim=True)
-        simi = simi / (simi_sum + 1e-8)
-        diag_sim = torch.diagonal(simi, dim1=1, dim2=2)
+        similarity_scores = torch.matmul(
+            student_normed, teacher_normed.transpose(1, 2)
+        ) / T  # (N, H×W, C)  x  (N, C, H×W)  →  (N, H×W, H×W)
+        similarity_scores = torch.exp(similarity_scores)
+        similarity_scores_sum = similarity_scores.sum(dim=2, keepdim=True)
+        softmax_similarity_scores = similarity_scores / (similarity_scores_sum + 1e-8)
+        
+        diag_similarity_scores = torch.diagonal(softmax_similarity_scores, dim1=1, dim2=2)
 
         # unsupervised and only normal (or abnormal)
         if mask is None:
-            contra_loss = -torch.log(diag_sim + 1e-8).mean()
-            margin_loss_n = F.relu(margin - diag_sim).mean()
+            contrastive_loss = -torch.log(diag_similarity_scores + 1e-8).mean()
+            margin_loss_n = F.relu(margin - diag_similarity_scores).mean()
 
         # supervised
         else:
             # gt label
-            if len(mask.size()) < 3:
+            if len(mask.size()) < 3:  # 단일 레이블
                 normal_mask = (mask == 0)
                 abnormal_mask = (mask == 1)
             # gt mask
@@ -57,16 +61,16 @@ def losses(b, a, T, margin, λ=0.7, mask=None, stop_gradient=False):
                 abnormal_mask = (mask_flat == 1)
 
             if normal_mask.sum() > 0:
-                diag_sim_normal = diag_sim[normal_mask]
-                contra_loss = -torch.log(diag_sim_normal + 1e-8).mean()
+                diag_sim_normal = diag_similarity_scores[normal_mask]
+                contrastive_loss = -torch.log(diag_sim_normal + 1e-8).mean()
                 margin_loss_n = F.relu(margin - diag_sim_normal).mean()
             if abnormal_mask.sum() > 0:
-                diag_sim_abnormal = diag_sim[abnormal_mask]
+                diag_sim_abnormal = diag_similarity_scores[abnormal_mask]
                 margin_loss_a = F.relu(diag_sim_abnormal - margin / 2).mean()
 
         margin_loss = margin_loss_n + margin_loss_a
 
-        loss += cos_loss * λ + contra_loss * (1 - λ) + margin_loss
+        loss += cos_loss * λ + contrastive_loss * (1 - λ) + margin_loss
 
     return loss
 

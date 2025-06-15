@@ -63,7 +63,7 @@ def train_mc(c):
             loss_list.append(loss.item())
             lr_scheduler.step()
             if (it + 1) % 1000 == 0:
-                modules_list = [model.t.t_t, model.bn.bn, model.s.s1, DFS]
+                modules_list = [model.teacher.target_teacher, model.bottleneck.bottleneck, model.student.student_decoder, DFS]
                 auroc_sp_list, ap_sp_list, f1_list = [], [], []
 
                 for item, test_dataloader in zip(class_list, test_dataloader_list):
@@ -83,9 +83,9 @@ def train_mc(c):
                     save_weights(modules_list, ckpt_path, 'BEST_I_ROC') if c.is_saved else None
                 model.train_or_eval(type='train')
                 if dataset_name == 'MVTec AD':
-                    model.t.t_t.eval()
-                    model.s.eval()
-                    model.bn.eval()
+                    model.teacher.target_teacher.eval()
+                    model.student.eval()
+                    model.bottleneck.eval()
                     model.dfs.eval()
             it += 1
             if it == total_iters:
