@@ -44,6 +44,7 @@ def train(args):
         betas=(0.9, 0.999), weight_decay=1e-5)
 
     model = UniNet(args, source_teacher, target_teacher, bottleneck, student, DFS=DFS)
+    model = model.to(device)
 
     # total_params = count_parameters(model)
     # print("Number of parameter: %.2fM" % (total_params/1e6))
