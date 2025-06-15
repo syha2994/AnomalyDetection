@@ -6,6 +6,7 @@ from datasets import unsupervised, industrial, mvtec_list
 import argparse
 from utils import setup_seed, get_logger
 from test import test
+import wandb
 
 
 def parsing_args():
@@ -45,6 +46,10 @@ def parsing_args():
 if __name__ == '__main__':
     setup_seed(1203)
     args = parsing_args()
+
+    # 실험 초기화
+    wandb.init(project="UniNet", name=f"{args.dataset}_{args.setting}", config=vars(args))
+
     if not args.weighted_decision_mechanism:
         args.default = args.alpha = args.beta = args.gamma = "w/o"
 

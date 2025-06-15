@@ -2,6 +2,7 @@ import os
 import copy  # 모델 구조를 그대로 복사할 때 사용
 import torch
 import numpy as np
+import wandb
 from eval import evaluation_indusAD, evaluation_mediAD, evaluation_video
 from utils import save_weights, to_device
 from datasets import loading_dataset
@@ -59,6 +60,7 @@ def train(args):
 
     # ---------------------------------------------training-----------------------------------------------
     for epoch in range(args.epochs):
+        wandb_log_step = epoch  # epoch 단위 로깅 기준
         model.train_or_eval(type='train')
         loss_list = []
         for sample in train_dataloader:  # 배치 단위
@@ -80,6 +82,11 @@ def train(args):
                     modules_list = [model.teacher.target_teacher, model.bottleneck.bottleneck, model.student.student_decoder, DFS]
                     auroc, f1, acc = evaluation_mediAD(args, model, test_dataloader, device)
                     print('Auroc: {:.2f}, f1: {:.2f}, acc: {:.2f}'.format(auroc, f1, acc))
+                    wandb.log({
+                        "auroc": auroc,
+                        "f1_score": f1,
+                        "accuracy": acc
+                    }, step=it)
                     if best_sample_level_auroc < auroc:
                         best_sample_level_auroc = auroc
                         save_weights(modules_list, ckpt_path, "BEST_I_ROC") if args.is_saved else None
@@ -92,6 +99,8 @@ def train(args):
 
         if dataset_name in ['MVTec AD', 'BTAD', 'MVTec 3D-AD', "VisA", 'ped2']:
             print('epoch [{}/{}], loss:{:.4f}'.format(epoch + 1, args.epochs, np.mean(loss_list)))
+            ################### wandb log ###################
+            wandb.log({"epoch_loss": np.mean(loss_list)}, step=wandb_log_step)
 
         modules_list = [model.teacher.target_teacher, model.bottleneck.bottleneck, model.student.student_decoder, DFS]
         is_best_sample_auroc = False
@@ -101,7 +110,13 @@ def train(args):
                 # evaluation
                 pixel_level_auroc, sample_level_auroc, pixel_level_aupro = evaluation_indusAD(args, model, test_dataloader, device)
                 print('Sample Auroc: {:.1f}, Pixel Auroc: {:.1f}, Pixel Aupro: {:.1f}'.format(sample_level_auroc, pixel_level_auroc,
-                                                                                              pixel_level_aupro))
+                                                                                                    pixel_level_aupro))
+                ############ wandb log ############
+                wandb.log({
+                    "sample_auroc": sample_level_auroc,
+                    "pixel_auroc": pixel_level_auroc,
+                    "pixel_aupro": pixel_level_aupro
+                }, step=wandb_log_step)
                 if best_sample_level_auroc < sample_level_auroc:
                     best_sample_level_auroc = sample_level_auroc
                     is_best_sample_auroc = True
@@ -114,6 +129,8 @@ def train(args):
                     best_pixel_level_aupro = pixel_level_aupro
                     print('saved')
                     save_weights(modules_list, ckpt_path, "BEST_P_PRO") if args.is_saved else None
+                    ########## wandb save ############
+                    wandb.save(os.path.join(ckpt_path, "BEST_P_PRO.pth"))
 
                 print(f"MAX I_ROC: {best_sample_level_auroc:.1f}, MAX P_ROC: {best_pixel_level_auroc:.1f}, MAX P_PRO: {best_pixel_level_aupro:.1f}")
                 early_stopping(pixel_level_aupro)
