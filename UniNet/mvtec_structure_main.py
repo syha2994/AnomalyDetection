@@ -48,6 +48,7 @@ if __name__ == '__main__':
     if not args.weighted_decision_mechanism:
         args.default = args.alpha = args.beta = args.gamma = "w/o"
 
+    args.domain = 'industrial'
     dataset_name = args.dataset
     logger = get_logger(dataset_name, os.path.join(args.save_dir, dataset_name))
     dataset = mvtec_list
