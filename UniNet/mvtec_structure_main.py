@@ -14,9 +14,9 @@ def parsing_args():
 
     parser.add_argument('--domain', default='industrial', type=str,
                         choices=['industrial', 'medical', 'video', 'natural'], help="choose experimental domain.")
-    parser.add_argument('--setting', default='mc', type=str, choices=['oc', 'mc', 'cd'],
+    parser.add_argument('--setting', default='oc', type=str, choices=['oc', 'mc', 'cd'],
                         help="choose experimental settings, including one-class, multi-class, cross-dataset.")
-    parser.add_argument('--dataset', default='VisA', type=str,
+    parser.add_argument('--dataset', default='MVTec AD', type=str,
                         choices=['MVTec AD', 'BTAD', 'MVTec 3D-AD', "VisA", "VAD", "APTOS", "ISIC2018", "OCT2017",
                                  "Kvasir-SEG", "CVC-ClinicDB", "CVC-ColonDB", "Ped2"],
                         help="choose experimental dataset.")
