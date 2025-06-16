@@ -1,5 +1,5 @@
 # sweep.yaml
-program: mvtec_structure_main.py
+program: /home/spiderman/working/PycharmProjects/AnomalyDetection/UniNet/mvtec_structure_main.py
 method: grid
 metric:
   name: sample_auroc
