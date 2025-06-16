@@ -1,0 +1,15 @@
+# sweep.yaml
+method: grid  # 또는 random, bayes
+metric:
+  name: sample_auroc
+  goal: maximize
+
+parameters:
+  lr_s:
+    values: [0.001, 0.0005]
+  lr_t:
+    values: [1e-6, 1e-5]
+  batch_size:
+    values: [8]
+  T:
+    values: [0.5, 1.0, 2.0]

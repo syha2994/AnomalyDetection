@@ -1,18 +1,11 @@
 import copy
 import os
-
-import numpy as np
 import torch
-from scipy.ndimage import gaussian_filter
-from sklearn.metrics import precision_recall_curve, roc_auc_score
-
 from UniNet_lib.DFS import DomainRelated_Feature_Selection
-from UniNet_lib.mechanism import weighted_decision_mechanism
 from eval import evaluation_indusAD, evaluation_batch, evaluation_mediAD, evaluation_polypseg, \
     evaluation_vad, evaluation_video
 from UniNet_lib.resnet import wide_resnet50_2
 from utils import load_weights, t2np, to_device
-from torch.nn import functional as F
 from datasets import loading_dataset, unsupervised, supervised
 
 

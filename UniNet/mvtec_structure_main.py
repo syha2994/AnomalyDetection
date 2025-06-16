@@ -47,8 +47,6 @@ if __name__ == '__main__':
     setup_seed(1203)
     args = parsing_args()
 
-    # 실험 초기화
-    wandb.init(project="UniNet", name=f"{args.dataset}_{args.setting}", config=vars(args))
 
     if not args.weighted_decision_mechanism:
         args.default = args.alpha = args.beta = args.gamma = "w/o"
@@ -69,6 +67,20 @@ if __name__ == '__main__':
     if not args.load_ckpts:
         for idx, i in enumerate(dataset):
             args._class_ = i
+            # ---------------- wandb init ----------------
+            wandb.init(
+                project="UniNet",
+                name=f"{args.dataset}_{args.setting}_{args._class_}",
+                config=vars(args)
+            )
+            config = wandb.config
+
+            args.lr_s = config.lr_s
+            args.lr_t = config.lr_t
+            args.batch_size = config.batch_size
+            args.T = config.T
+
+            # --------------------------------------------
             args_dict = vars(args)
             args_info = f"class:{i}, " if args.setting == 'oc' else f""
             for key, value in args_dict.items():
@@ -110,6 +122,13 @@ if __name__ == '__main__':
             image_auroc_list.append(auroc_sp)
             pixel_auroc_list.append(auroc_px)
             pixel_aupro_list.append(aupro_px)
+            # ----------------------wandb log-----------------------
+            wandb.log({
+                "mean_image_auroc": np.mean(image_auroc_list),
+                "mean_pixel_auroc": np.mean(pixel_auroc_list),
+                "mean_pixel_aupro": np.mean(pixel_aupro_list)
+            })
+            # ------------------------------------------------------
             results = tabulate(result_tabel_rows, headers=['object', 'image_auroc', 'pixel_auroc', 'pixel_aupro'],
                                tablefmt="pipe")
         result_tabel_rows.append(['mean', str(np.round(np.mean(image_auroc_list), decimals=2)),
@@ -118,6 +137,19 @@ if __name__ == '__main__':
         results = tabulate(result_tabel_rows, headers=['object', 'image_auroc', 'pixel_auroc', 'pixel_aupro'],
                            tablefmt="pipe")
         print(results)
+        image_dir = os.path.join(
+            "/home/spiderman/working/PycharmProjects/AnomalyDetection/UniNet/results",
+            args.dataset, args._class_
+        )
+        image_paths = sorted([
+            os.path.join(image_dir, f)
+            for f in os.listdir(image_dir)
+            if f.endswith(".png")
+        ])
+
+        wandb.log({
+            f"{args._class_}_anomaly_visualizations": [wandb.Image(p) for p in image_paths[:5]]
+        })
 
     elif args.setting == 'mc':
         print('testing on {} dataset (multiclass)'.format(dataset_name))
