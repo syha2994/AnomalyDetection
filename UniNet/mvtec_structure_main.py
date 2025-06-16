@@ -75,10 +75,10 @@ if __name__ == '__main__':
             )
             config = wandb.config
 
-            args.lr_s = config.lr_s
-            args.lr_t = config.lr_t
-            args.batch_size = config.batch_size
-            args.T = config.T
+            args.lr_s = float(config.lr_s)
+            args.lr_t = float(config.lr_t)
+            args.batch_size = int(config.batch_size)
+            args.T = float(config.T)
 
             # --------------------------------------------
             args_dict = vars(args)
