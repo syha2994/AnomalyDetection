@@ -1,5 +1,6 @@
 # sweep.yaml
-method: grid  # 또는 random, bayes
+program: mvtec_structure_main.py
+method: grid
 metric:
   name: sample_auroc
   goal: maximize
@@ -12,4 +13,4 @@ parameters:
   batch_size:
     values: [8]
   T:
-    values: [0.5, 1.0, 2.0]
+    values: [0.5, 1.0]
